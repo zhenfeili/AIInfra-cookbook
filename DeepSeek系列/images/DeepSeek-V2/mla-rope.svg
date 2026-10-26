@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="825" viewBox="0 0 1000 825" role="img">
+<title>解耦 RoPE：内容与位置分别匹配，共用一个 softmax</title>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#546778"/></marker></defs>
+<rect width="1000" height="825" fill="white"/>
+<text x="500" y="38" font-size="25" text-anchor="middle" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">解耦 RoPE：内容分支保留吸收，位置分支独立旋转</text>
+<rect x="30" y="65" width="940" height="90" rx="9" fill="#fff2e7" stroke="#c8d4df"/>
+<text x="500.0" y="102.125" font-size="21" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">若直接旋转内容：qᵀ [Rₜᵀ Rⱼ] Wᵁᴷᵢ cⱼ</text>
+<text x="500.0" y="132.575" font-size="21" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">中间旋转随历史位置 j 改变，无法预先合成一个通用查询投影。</text>
+<text x="250" y="195" font-size="22" text-anchor="middle" fill="#356da8" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">内容匹配（蓝色）</text>
+<text x="750" y="195" font-size="22" text-anchor="middle" fill="#ba6831" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">位置匹配（橙色）</text>
+<rect x="30" y="220" width="440" height="100" rx="9" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="250.0" y="262.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">当前 cₜQ：[1536,1]</text>
+<text x="250.0" y="291.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">经 (Wᵁᴷᵢ)ᵀ WᵁQᵢ → q̃ₜᵢ：[512,1]</text>
+<rect x="530" y="220" width="440" height="100" rx="9" fill="#fff2e7" stroke="#c8d4df"/>
+<text x="750.0" y="249.1" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">当前 cₜQ：[1536,1]</text>
+<text x="750.0" y="276.65" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">WQᴿᵢ：[64,1536] 投影，再由 Rₜ 旋转</text>
+<text x="750.0" y="304.2" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">得到每头 qᴿₜᵢ：[64,1]</text>
+<polyline points="140,320 140,435" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<polyline points="640,320 640,435" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="220" y="345" width="250" height="65" rx="9" fill="#eaf5f0" stroke="#287c64"/>
+<text x="345.0" y="370.75" font-size="18" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">历史 cⱼᴷⱽ：[512,1]</text>
+<text x="345.0" y="396.85" font-size="18" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">所有头共享缓存</text>
+<rect x="720" y="345" width="250" height="65" rx="9" fill="#eaf5f0" stroke="#287c64"/>
+<text x="845.0" y="370.75" font-size="18" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">历史 kᴿⱼ：[64,1]</text>
+<text x="845.0" y="396.85" font-size="18" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">所有头共享缓存</text>
+<polyline points="345,410 345,435" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<polyline points="845,410 845,435" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="30" y="435" width="440" height="65" rx="9" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="250.0" y="474.85" font-size="21" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">点积 q̃ₜᵢᵀ cⱼᴷⱽ → 标量</text>
+<rect x="530" y="435" width="440" height="65" rx="9" fill="#fff2e7" stroke="#c8d4df"/>
+<text x="750.0" y="474.85" font-size="21" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">点积 (qᴿₜᵢ)ᵀ kᴿⱼ → 标量</text>
+<polyline points="250,500 250,530 430,530 430,555" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<polyline points="750,500 750,530 570,530 570,555" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="255" y="555" width="490" height="85" rx="9" fill="#f5f7fa" stroke="#c8d4df"/>
+<text x="500.0" y="589.25" font-size="22" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">两个标量相加，再除以 √192</text>
+<text x="500.0" y="621.15" font-size="22" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">对历史位置 j ≤ t 做一次 softmax</text>
+<polyline points="500,640 500,670" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="255" y="670" width="490" height="60" rx="9" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="500.0" y="707.35" font-size="21" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">输出每头权重 aₜⱼᵢ → 加权汇总 V</text>
+<text x="500" y="766" font-size="19" text-anchor="middle" fill="#ba6831" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">位置 K 的来源：hⱼ [5120,1] → Wᴷᴿ [64,5120] → Rⱼ → kᴿⱼ [64,1]</text>
+<text x="500" y="800" font-size="18" text-anchor="middle" fill="#287c64" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">每层每 token 缓存：512 + 64 = 576 个元素；绿色框是缓存，Q 不进入历史缓存。</text>
+</svg>

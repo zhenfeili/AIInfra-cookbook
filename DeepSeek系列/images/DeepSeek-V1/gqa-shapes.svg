@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="610" viewBox="0 0 1000 610" role="img">
+<title>DeepSeek LLM 67B 的 GQA 投影尺寸与组内共享</title>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#546778"/></marker></defs>
+<rect width="1000" height="610" fill="white"/>
+<text x="500" y="36" text-anchor="middle" font-size="25" font-weight="600" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">67B：64 个 Q 头，8 组 K/V，每组服务 8 个 Q 头</text>
+<rect x="340" y="65" width="320" height="64" rx="8" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="500.0" y="104.7" text-anchor="middle" font-size="22" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">输入 X：[S,8192]</text>
+<polyline points="420,129 420,150 245,150 245,170" fill="none" stroke="#546778" stroke-width="1.8" marker-end="url(#arrow)"/>
+<polyline points="580,129 580,150 755,150 755,170" fill="none" stroke="#546778" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="40" y="170" width="410" height="100" rx="8" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="245.0" y="212.5" text-anchor="middle" font-size="20" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">WQ：[8192,8192]</text>
+<text x="245.0" y="241.5" text-anchor="middle" font-size="20" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Q：[S,8192] → [S,64,128]</text>
+<rect x="550" y="170" width="410" height="100" rx="8" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="755.0" y="212.5" text-anchor="middle" font-size="20" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">WK、WV：各 [8192,1024]</text>
+<text x="755.0" y="241.5" text-anchor="middle" font-size="20" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">K、V：各 [S,1024] → [S,8,128]</text>
+<text x="500" y="312" text-anchor="middle" font-size="20" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">展开第 0 组：每个头独立打分和输出，共享同一份 K₀、V₀</text>
+<rect x="25" y="340" width="96" height="72" rx="8" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="73.0" y="369.25" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">头 0</text>
+<text x="73.0" y="395.35" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Q0 → O0</text>
+<polyline points="73,446 73,412" fill="none" stroke="#546778" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="147" y="340" width="96" height="72" rx="8" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="195.0" y="369.25" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">头 1</text>
+<text x="195.0" y="395.35" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Q1 → O1</text>
+<polyline points="195,446 195,412" fill="none" stroke="#546778" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="269" y="340" width="96" height="72" rx="8" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="317.0" y="369.25" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">头 2</text>
+<text x="317.0" y="395.35" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Q2 → O2</text>
+<polyline points="317,446 317,412" fill="none" stroke="#546778" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="391" y="340" width="96" height="72" rx="8" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="439.0" y="369.25" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">头 3</text>
+<text x="439.0" y="395.35" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Q3 → O3</text>
+<polyline points="439,446 439,412" fill="none" stroke="#546778" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="513" y="340" width="96" height="72" rx="8" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="561.0" y="369.25" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">头 4</text>
+<text x="561.0" y="395.35" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Q4 → O4</text>
+<polyline points="561,446 561,412" fill="none" stroke="#546778" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="635" y="340" width="96" height="72" rx="8" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="683.0" y="369.25" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">头 5</text>
+<text x="683.0" y="395.35" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Q5 → O5</text>
+<polyline points="683,446 683,412" fill="none" stroke="#546778" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="757" y="340" width="96" height="72" rx="8" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="805.0" y="369.25" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">头 6</text>
+<text x="805.0" y="395.35" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Q6 → O6</text>
+<polyline points="805,446 805,412" fill="none" stroke="#546778" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="879" y="340" width="96" height="72" rx="8" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="927.0" y="369.25" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">头 7</text>
+<text x="927.0" y="395.35" text-anchor="middle" font-size="18" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Q7 → O7</text>
+<polyline points="927,446 927,412" fill="none" stroke="#546778" stroke-width="1.8" marker-end="url(#arrow)"/>
+<polyline points="73,446 927,446" fill="none" stroke="#546778" stroke-width="1.8"/>
+<polyline points="500,483 500,446" fill="none" stroke="#546778" stroke-width="1.8"/>
+<rect x="310" y="483" width="380" height="58" rx="8" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="500.0" y="519.0" text-anchor="middle" font-size="20" font-weight="400" fill="#183049" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">共享缓存 K₀、V₀：各 [S,128]</text>
+<text x="500" y="576" text-anchor="middle" font-size="18" font-weight="400" fill="#546778" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">组 g 服务 Q 头 8g … 8g+7；组内箭头表示读取 K/V，K/V 无需物理复制 8 份。</text>
+</svg>

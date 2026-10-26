@@ -1,0 +1,14 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial Unicode MS, PingFang SC, sans-serif','fontSize':'20px','primaryTextColor':'#183049','lineColor':'#546778'},'flowchart':{'htmlLabels':false,'curve':'linear','padding':18,'rankSpacing':38,'nodeSpacing':40}}}%%
+flowchart TB
+    T["输入 token"] --> E["共享 Embedding"]
+    E --> A["前 3 个 Transformer 块\nMLA + 稠密 FFN"]
+    A --> F["后 58 个 Transformer 块\nMLA + MoE（1 个共享专家 + 256 选 8）"]
+    F --> H["主模型表示 hᵢ⁰：7168 维"]
+    H --> O["共享输出头\n预测 tᵢ₊₁"]
+    H --> M["MTP：融合投影 + 1 个 Transformer 块"]
+    N["训练时的真实 tᵢ₊₁\n经同一 Embedding"] --> M
+    M --> P["同一输出头\n额外预测 tᵢ₊₂"]
+    classDef main fill:#eef4fb,stroke:#356da8,color:#183049;
+    classDef mtp fill:#eaf5f0,stroke:#287c64,color:#183049;
+    class A,F,H,O main;
+    class N,M,P mtp;

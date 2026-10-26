@@ -1,0 +1,15 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial Unicode MS, PingFang SC, sans-serif','fontSize':'20px','primaryTextColor':'#183049','lineColor':'#546778'},'flowchart':{'htmlLabels':false,'curve':'linear','padding':18,'rankSpacing':35,'nodeSpacing':30}}}%%
+flowchart TB
+    X["输入 xₜ：5120 维"] --> S["2 个共享专家\n每个 token 都执行"]
+    X --> R["路由器：softmax（Wᵣ xₜ）\n160 个专家亲和度分数"]
+    R --> D["先选设备\n8 台中至多选择 3 台"]
+    D --> K["再选专家\n在这些设备上选择 Top-6"]
+    K -.->|"决定执行谁及其权重 gₜᵢ"| E["执行选中的 6 个路由专家\n其余路由专家不执行"]
+    X -->|"输入数据"| E
+    S --> U["共享输出直接求和\n路由输出按 gₜᵢ 加权求和"]
+    E --> U
+    U --> O["专家分支输出 F（xₜ）：5120 维"]
+    classDef shared fill:#eaf5f0,stroke:#287c64,color:#183049;
+    classDef route fill:#eef4fb,stroke:#356da8,color:#183049;
+    class S,U shared;
+    class R,D,K,E route;

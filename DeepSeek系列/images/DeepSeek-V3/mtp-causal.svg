@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="800" viewBox="0 0 1000 800" role="img">
+<title>MTP 的因果关系与张量形状；V3 实际 D=1</title>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#546778"/></marker></defs>
+<rect width="1000" height="800" fill="white"/>
+<text x="500" y="38" text-anchor="middle" font-size="25" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">MTP 训练：多预测一步，但不读取该步的目标 token</text>
+<text x="500" y="72" text-anchor="middle" font-size="18" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">列向量 · 实际 D = 1 · 图中只展开位置 i；Transformer 沿序列做因果注意力</text>
+<rect x="35" y="105" width="420" height="72" rx="7" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="245.0" y="133.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">主模型读取 t₁ … tᵢ</text>
+<text x="245.0" y="162.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">得到 hᵢ⁰：[7168,1]</text>
+<rect x="545" y="105" width="420" height="72" rx="7" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="755.0" y="133.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">训练语料提供真实 tᵢ₊₁</text>
+<text x="755.0" y="162.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">共享 Embedding：[7168,1]</text>
+<polyline points="245,177 245,215" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<polyline points="755,177 755,215" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="35" y="215" width="420" height="58" rx="7" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="245.0" y="251.0" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">RMSNorm（hᵢ⁰）</text>
+<rect x="545" y="215" width="420" height="58" rx="7" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="755.0" y="251.0" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">RMSNorm（Emb（tᵢ₊₁））</text>
+<polyline points="245,273 245,307 430,307 430,340" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<polyline points="755,273 755,307 570,307 570,340" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="225" y="340" width="550" height="90" rx="7" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="500.0" y="377.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">拼接：[14336,1]</text>
+<text x="500.0" y="406.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">M₁：[7168,14336] → h′ᵢ¹：[7168,1]</text>
+<polyline points="500,430 500,465" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="225" y="465" width="550" height="80" rx="7" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="500.0" y="497.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">因果 Transformer 块 TRM₁</text>
+<text x="500.0" y="526.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">hᵢ¹：[7168,1]</text>
+<polyline points="500,545 500,580" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="225" y="580" width="550" height="75" rx="7" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="500.0" y="610.0" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">共享输出头 → 词表概率 P¹ᵢ₊₂</text>
+<text x="500.0" y="639.0" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">交叉熵目标：真实 tᵢ₊₂</text>
+<rect x="35" y="685" width="930" height="75" rx="7" fill="#fff2e7" stroke="#c8d4df"/>
+<text x="500.0" y="715.375" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">主任务：hᵢ⁰ → 预测 tᵢ₊₁；MTP：hᵢ⁰ + 已知 tᵢ₊₁ → 预测 tᵢ₊₂。</text>
+<text x="500.0" y="742.925" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">训练时用真实前序 token；推测解码时换成已生成的候选，再由主模型验证。</text>
+</svg>

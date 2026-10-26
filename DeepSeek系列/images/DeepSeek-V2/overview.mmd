@@ -1,0 +1,12 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Arial Unicode MS, PingFang SC, sans-serif','fontSize':'20px','primaryTextColor':'#183049','lineColor':'#546778'},'flowchart':{'htmlLabels':false,'curve':'linear','padding':18,'rankSpacing':36,'nodeSpacing':30}}}%%
+flowchart TB
+    I["输入 token → 词嵌入"] --> X["第 ℓ 层输入 x（ℓ = 1…60）"]
+      X --> N1["RMSNorm"] --> A["MLA 注意力\n联合压缩 KV + 解耦 RoPE"] --> P1["残差相加"]
+      X --> P1
+      P1 --> N2["RMSNorm"] --> F["前馈网络\n首层：稠密 FFN\n其余 59 层：DeepSeekMoE"] --> P2["残差相加"]
+      P1 --> P2
+    P2 --> O["最终归一化 → 输出投影\n下一 token 概率"]
+    classDef attention fill:#eef4fb,stroke:#356da8,color:#183049;
+    classDef experts fill:#eaf5f0,stroke:#287c64,color:#183049;
+    class A attention;
+    class F experts;

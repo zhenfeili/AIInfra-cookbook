@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="765" viewBox="0 0 1000 765" role="img">
+<title>无辅助损失均衡：偏置影响选择，原始分数决定权重</title>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#546778"/></marker></defs>
+<rect width="1000" height="765" fill="white"/>
+<text x="500" y="38" text-anchor="middle" font-size="26" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">把“选谁”与“输出占比”分开</text>
+<rect x="300" y="65" width="400" height="62" rx="7" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="500.0" y="103.0" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">亲和度 s = sigmoid（E uₜ）</text>
+<polyline points="390,127 390,150 250,150 250,180" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<polyline points="610,127 610,150 750,150 750,180" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="35" y="180" width="430" height="100" rx="7" fill="#fff2e7" stroke="#c8d4df"/>
+<text x="250.0" y="222.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">选择分支：s + b → Top-K</text>
+<text x="250.0" y="251.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">得到专家集合 Sₜ</text>
+<rect x="535" y="180" width="430" height="100" rx="7" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="750.0" y="222.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">选中专家的权重：只读取原始 s</text>
+<text x="750.0" y="251.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">gᵢₜ = sᵢₜ / Σⱼ∈Sₜ sⱼₜ</text>
+<polyline points="465,230 535,230" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6 5"/>
+<text x="500" y="310" text-anchor="middle" font-size="19" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">虚线传递选中集合；偏置 b 不加进混合权重</text>
+<rect x="35" y="335" width="430" height="90" rx="7" fill="#fff2e7" stroke="#c8d4df"/>
+<text x="250.0" y="372.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">按整个训练 batch 统计专家负载</text>
+<text x="250.0" y="401.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">过载：bᵢ − γ；欠载：bᵢ + γ</text>
+<polyline points="250,280 250,335" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<polyline points="35,380 15,380 15,155 75,155 75,180" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6 5"/>
+<text x="730" y="375" text-anchor="middle" font-size="19" fill="#ba6831" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">下一训练步使用更新后的偏置</text>
+<text x="500" y="466" text-anchor="middle" font-size="21" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">教学示例：4 个专家选 2 个（实际 V3 为 256 选 8）</text>
+<rect x="45" y="490" width="230" height="42" rx="0" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="160.0" y="517" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">专家</text>
+<rect x="275" y="490" width="170" height="42" rx="0" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="360.0" y="517" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">A</text>
+<rect x="445" y="490" width="170" height="42" rx="0" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="530.0" y="517" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">B</text>
+<rect x="615" y="490" width="170" height="42" rx="0" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="700.0" y="517" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">C</text>
+<rect x="785" y="490" width="170" height="42" rx="0" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="870.0" y="517" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">D</text>
+<rect x="45" y="532" width="230" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="160.0" y="559" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">亲和度 s</text>
+<rect x="275" y="532" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="360.0" y="559" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">0.80</text>
+<rect x="445" y="532" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="530.0" y="559" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">0.70</text>
+<rect x="615" y="532" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="700.0" y="559" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">0.40</text>
+<rect x="785" y="532" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="870.0" y="559" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">0.30</text>
+<rect x="45" y="574" width="230" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="160.0" y="601" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">偏置 b</text>
+<rect x="275" y="574" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="360.0" y="601" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">−0.40</text>
+<rect x="445" y="574" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="530.0" y="601" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">−0.30</text>
+<rect x="615" y="574" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="700.0" y="601" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">+0.20</text>
+<rect x="785" y="574" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="870.0" y="601" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">+0.25</text>
+<rect x="45" y="616" width="230" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="160.0" y="643" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">选择分数 s+b</text>
+<rect x="275" y="616" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="360.0" y="643" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">0.40</text>
+<rect x="445" y="616" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="530.0" y="643" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">0.40</text>
+<rect x="615" y="616" width="170" height="42" rx="0" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="700.0" y="643" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">0.60 ✓</text>
+<rect x="785" y="616" width="170" height="42" rx="0" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="870.0" y="643" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">0.55 ✓</text>
+<rect x="45" y="658" width="230" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="160.0" y="685" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">混合权重 g</text>
+<rect x="275" y="658" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="360.0" y="685" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">0</text>
+<rect x="445" y="658" width="170" height="42" rx="0" fill="#f8fafc" stroke="#c8d4df"/>
+<text x="530.0" y="685" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">0</text>
+<rect x="615" y="658" width="170" height="42" rx="0" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="700.0" y="685" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">4/7</text>
+<rect x="785" y="658" width="170" height="42" rx="0" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="870.0" y="685" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">3/7</text>
+<text x="500" y="735" text-anchor="middle" font-size="18" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">不加偏置时选 A、B；加偏置后选 C、D，权重仍由 0.40 与 0.30 归一化得到。</text>
+</svg>

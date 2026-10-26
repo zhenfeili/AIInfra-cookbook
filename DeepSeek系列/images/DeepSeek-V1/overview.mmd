@@ -1,0 +1,24 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial Unicode MS, PingFang SC, sans-serif","fontSize":"19px","primaryTextColor":"#183049","lineColor":"#546778","clusterBkg":"#f7f9fc","clusterBorder":"#d1dbe4"},"flowchart":{"htmlLabels":false,"curve":"linear","nodeSpacing":30,"rankSpacing":32,"padding":18,"subGraphTitleMargin":{"top":10,"bottom":20}}}}%%
+flowchart TB
+  subgraph research[先用小实验决定如何扩大训练]
+    direction LR
+    A[数据去重、过滤、配比] --> B[校准学习率与批大小]
+    B --> C[固定算力 IsoFLOP 实验]
+    C --> D[选择模型规模与训练 token 数]
+  end
+  research -.指导配置.-> model
+  subgraph model[稠密 Decoder-only Transformer：7B / 67B]
+    direction LR
+    E[输入 token<br/>Embedding] --> F[重复 L 层<br/>RMSNorm → 注意力 → 残差<br/>RMSNorm → SwiGLU → 残差<br/>7B：30 层 MHA；67B：95 层 GQA]
+    F --> G[最终 RMSNorm<br/>词表投影 → 下一 token 概率]
+  end
+  model --> alignment
+  subgraph alignment[训练产物]
+    direction LR
+    H[预训练 Base] --> I[指令微调 SFT<br/>Chat]
+    I --> J[偏好优化 DPO<br/>Chat-DPO]
+  end
+  classDef study fill:#eaf1fb,stroke:#4675a7,color:#172b4d;
+  classDef net fill:#e7f3ee,stroke:#42826b,color:#173e30;
+  class A,B,C,D study;
+  class E,F,G,H,I,J net;

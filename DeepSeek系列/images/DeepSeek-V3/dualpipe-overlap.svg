@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="640" viewBox="0 0 1000 640" role="img">
+<title>DualPipe 的重叠直觉；非真实调度表或耗时测量</title>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#546778"/></marker></defs>
+<rect width="1000" height="640" fill="white"/>
+<text x="500" y="38" text-anchor="middle" font-size="25" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">DualPipe：把一块的通信放进另一块的计算窗口</text>
+<text x="500" y="74" text-anchor="middle" font-size="18" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">前向 F 与反向 B 来自不同 micro-batch；仍须遵守各自的数据依赖</text>
+<text x="35" y="120" text-anchor="start" font-size="21" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">层内依赖</text>
+<rect x="35" y="145" width="195" height="64" rx="7" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="132.5" y="184.0" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Attention</text>
+<polyline points="230,177 280,177" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="280" y="145" width="195" height="64" rx="7" fill="#fff2e7" stroke="#c8d4df"/>
+<text x="377.5" y="184.0" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Dispatch</text>
+<polyline points="475,177 525,177" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="525" y="145" width="195" height="64" rx="7" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="622.5" y="184.0" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">专家 MLP</text>
+<polyline points="720,177 770,177" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="770" y="145" width="195" height="64" rx="7" fill="#fff2e7" stroke="#c8d4df"/>
+<text x="867.5" y="184.0" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Combine</text>
+<text x="500" y="244" text-anchor="middle" font-size="19" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">反向计算进一步分为：输入梯度 Bₓ（供前层继续反传）与权重梯度 B𝓌</text>
+<text x="35" y="292" text-anchor="start" font-size="21" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">两个可重叠的工作窗口（仅示意）</text>
+<text x="115" y="352" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">计算资源</text>
+<text x="115" y="423" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">通信资源</text>
+<rect x="220" y="315" width="320" height="60" rx="7" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="380.0" y="351.65" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">反向块 B：已就绪的计算</text>
+<rect x="555" y="315" width="410" height="60" rx="7" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="760.0" y="351.65" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">前向块 F：专家 MLP 等计算</text>
+<rect x="220" y="390" width="320" height="60" rx="7" fill="#fff2e7" stroke="#c8d4df"/>
+<text x="380.0" y="426.65" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">前向块 F：Dispatch</text>
+<rect x="555" y="390" width="410" height="60" rx="7" fill="#fff2e7" stroke="#c8d4df"/>
+<text x="760.0" y="426.65" text-anchor="middle" font-size="19" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">反向块 B：已就绪的通信</text>
+<polyline points="220,475 965,475" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="945" y="505" text-anchor="middle" font-size="18" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">时间 →</text>
+<rect x="35" y="535" width="930" height="65" rx="7" fill="#f5f7fa" stroke="#c8d4df"/>
+<text x="500.0" y="574.5" text-anchor="middle" font-size="20" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">全局再用双向流水线：从两端注入 micro-batch，减少填充与排空气泡。</text>
+<text x="500" y="625" text-anchor="middle" font-size="17" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">框宽不代表时间，图中不是论文图 4/5 的调度复刻；完整调度还包含 PP 通信和同步点。</text>
+</svg>

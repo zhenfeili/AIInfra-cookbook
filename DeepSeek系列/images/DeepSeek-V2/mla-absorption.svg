@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="760" viewBox="0 0 1000 760" role="img">
+<title>MLA 矩阵吸收：保持结果，改变历史状态参与计算的方式</title>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#546778"/></marker></defs>
+<rect width="1000" height="760" fill="white"/>
+<text x="500" y="38" font-size="25" text-anchor="middle" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">矩阵吸收：把计算移到查询侧或加权汇总之后</text>
+<text x="500" y="71" font-size="18" text-anchor="middle" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">列向量 · 单个头 i · cⱼ = cⱼᴷⱽ · q = qᶜₜᵢ · S 个历史位置</text>
+<text x="30" y="112" font-size="22" text-anchor="start" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">① K 侧：点积前，先变换谁？</text>
+<rect x="30" y="140" width="430" height="130" rx="9" fill="#f5f7fa" stroke="#c8d4df"/>
+<text x="245.0" y="183.0" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">逐位置展开历史 K</text>
+<text x="245.0" y="212.0" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">cⱼ [512,1] → Wᵁᴷᵢ → kᶜⱼᵢ [128,1]</text>
+<text x="245.0" y="241.0" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">再计算 qᵀ kᶜⱼᵢ</text>
+<rect x="540" y="140" width="430" height="130" rx="9" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="755.0" y="183.0" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">只变换当前 Q</text>
+<text x="755.0" y="212.0" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">q [128,1] → (Wᵁᴷᵢ)ᵀ → q̃ [512,1]</text>
+<text x="755.0" y="241.0" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">再计算 q̃ᵀ cⱼ</text>
+<polyline points="470,205 530,205" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="500" y="303" font-size="24" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">qᵀ (Wᵁᴷᵢ cⱼ) = ((Wᵁᴷᵢ)ᵀ q)ᵀ cⱼ</text>
+<text x="500" y="337" font-size="19" text-anchor="middle" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">C：[512,S]；内容分数 q̃ᵀC：[1,S]；完整权重转为列向量 a：[S,1]</text>
+<text x="30" y="390" font-size="22" text-anchor="start" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">② V 侧：先展开，还是先汇总？</text>
+<rect x="30" y="420" width="430" height="145" rx="9" fill="#f5f7fa" stroke="#c8d4df"/>
+<text x="245.0" y="471.59999999999997" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">逐位置展开历史 V</text>
+<text x="245.0" y="499.15" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">cⱼ → Wᵁⱽᵢ → vⱼᵢ [128,1]</text>
+<text x="245.0" y="526.6999999999999" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">按 aⱼ 汇总 → Wᴼᵢ → 输出 [5120,1]</text>
+<rect x="540" y="420" width="430" height="145" rx="9" fill="#eaf5f0" stroke="#c8d4df"/>
+<text x="755.0" y="471.59999999999997" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">先汇总潜在表示</text>
+<text x="755.0" y="499.15" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">z = C a：[512,1]</text>
+<text x="755.0" y="526.6999999999999" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">再经 Wᴼᵢ Wᵁⱽᵢ → 输出 [5120,1]</text>
+<polyline points="470,492 530,492" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="500" y="602" font-size="23" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Wᴼᵢ Σⱼ aⱼ (Wᵁⱽᵢ cⱼ) = (Wᴼᵢ Wᵁⱽᵢ) Σⱼ aⱼ cⱼ</text>
+<rect x="30" y="635" width="940" height="72" rx="9" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="500.0" y="663.875" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">不必物化 [128,S] 的历史 K、V；每个头仍有自己的 a 与 z。</text>
+<text x="500.0" y="691.425" font-size="19" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">可合并权重，也可分步计算；代数等价不代表 FLOPs 按缓存比例下降。</text>
+<text x="500" y="739" font-size="17" text-anchor="middle" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">此图只比较内容分支；完整打分还需加入位置分支，并使用原始 Q/K 维度的缩放。</text>
+</svg>

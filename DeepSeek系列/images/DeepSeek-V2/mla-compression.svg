@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="730" viewBox="0 0 1000 730" role="img">
+<title>MLA 联合压缩的矩阵形状；列向量，单 token</title>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#546778"/></marker></defs>
+<rect width="1000" height="730" fill="white"/>
+<text x="500" y="38" font-size="26" text-anchor="middle" fill="#183049" font-weight="600" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">一份 KV 潜在表示，供 128 个头分别读取</text>
+<text x="500" y="70" font-size="18" text-anchor="middle" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">列向量约定 · 本图只画内容分支 · 省略归一化与额外缩放</text>
+<rect x="350" y="96" width="300" height="66" rx="9" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="500.0" y="136.0" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">输入 hₜ：[5120, 1]</text>
+<polyline points="430,162 430,185 250,185 250,210" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<polyline points="570,162 570,185 750,185 750,210" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="40" y="210" width="420" height="80" rx="9" fill="#eaf5f0" stroke="#287c64"/>
+<text x="250.0" y="242.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">KV 降维 Wᴰᴷⱽ：[512, 5120]</text>
+<text x="250.0" y="271.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">cₜᴷⱽ：[512, 1]</text>
+<rect x="540" y="210" width="420" height="80" rx="9" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="750.0" y="242.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">Q 降维 WᴰQ：[1536, 5120]</text>
+<text x="750.0" y="271.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">cₜQ：[1536, 1]</text>
+<polyline points="70,290 70,365" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<polyline points="570,290 570,365" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="250" y="328" font-size="19" text-anchor="middle" fill="#287c64" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">这一份潜在表示进入历史缓存</text>
+<text x="750" y="328" font-size="19" text-anchor="middle" fill="#356da8" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">当前查询使用；不缓存历史 Q</text>
+<rect x="40" y="365" width="420" height="90" rx="9" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="250.0" y="402.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">每头的 Wᵁᴷᵢ、Wᵁⱽᵢ</text>
+<text x="250.0" y="431.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">各为 [128, 512]</text>
+<rect x="540" y="365" width="420" height="90" rx="9" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="750.0" y="402.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">每头的 WᵁQᵢ</text>
+<text x="750.0" y="431.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">[128, 1536]</text>
+<polyline points="250,455 250,490" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<polyline points="750,455 750,490" fill="none" stroke="#546778" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="40" y="490" width="420" height="80" rx="9" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="250.0" y="522.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">单头 kᶜₜᵢ、vₜᵢ：各 [128, 1]</text>
+<text x="250.0" y="551.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">所有头堆叠：各 [16384, 1]</text>
+<rect x="540" y="490" width="420" height="80" rx="9" fill="#eef4fb" stroke="#c8d4df"/>
+<text x="750.0" y="522.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">单头 qᶜₜᵢ：[128, 1]</text>
+<text x="750.0" y="551.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">所有头堆叠：[16384, 1]</text>
+<rect x="40" y="610" width="920" height="70" rx="9" fill="#f5f7fa" stroke="#c8d4df"/>
+<text x="500.0" y="637.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">联合线性投影：[32768, 512] × [512, 5120]</text>
+<text x="500.0" y="666.5" font-size="20" text-anchor="middle" fill="#183049" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">秩 ≤ 512；共享的是 cᴷⱽ，各头的读取矩阵仍不同</text>
+<text x="500" y="710" font-size="17" text-anchor="middle" fill="#546778" font-weight="400" font-family="Arial Unicode MS, Noto Sans CJK SC, PingFang SC, sans-serif">完整缓存还包含 64 维位置 K（见解耦 RoPE 图）；解码时可用矩阵吸收跳过历史 K/V 展开。</text>
+</svg>
