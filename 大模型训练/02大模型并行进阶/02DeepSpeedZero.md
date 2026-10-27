@@ -1,289 +1,356 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-# DeepSpeed ZeRO 系列介绍
+# 02. DeepSpeed ZeRO 系列介绍
 
 Author by: Feiming Yang
 
-在前一个章节中,我们对 DeepSpeed 进行了基本的介绍.DeepSpeed 当前已经成为大模型训练的主流框架之一.而 DeepSpeed 之所以能够成为大模型训练的主流框架，尤其是在训练吞吐方面表现卓越，主要归功于其一系列突破性的技术创新，这些技术极大地优化了计算效率、通信效率和显存利用率。而这在一系列的优化技术之中,零冗余优化器(Zero Redundancy Optimizer，ZeRO)无疑是其最为核心的优化.接下来,本章将重点介绍 DeepSpeed 中的 Zero 系列优化,从大模型训练的显存困境,到 ZeRO 各个系列如何逐步突破显存困境,最终实现低显存占用,高训练吞吐的大模型训练,进行详细的介绍和分析.
+[上一章](./01DeepSpeedIntro.md)介绍了 DeepSpeed 的整体架构。本章回答三个问题：**每张卡保存哪些状态，缺少的状态怎样通过通信获得，以及显存能省多少。**
 
-## 1.大模型训练的显存困境
+零冗余优化器（Zero Redundancy Optimizer，ZeRO）在数据并行（Data Parallelism，DP）组内分摊模型状态。各卡仍处理不同样本，分片后的参数更新共同构成一次完整模型更新。本文源码说明沿用 **DeepSpeed v0.17.5**；其他版本的调度细节与功能组合可能不同。
 
-随着大模型训练的 Scaling Law 不断被验证,模型训练的规模也越来越大.如今,超大模型已经成为推动 AI 领域研究和应用的核心引擎.然而,当我们训练一个形如 GPT-3(175B 参数)规模的大模型时,一个最为棘手的问题便会浮现——**显存墙（Memory Wall）**。
+## 1. 显存为什么不够
 
-对于一个拥有 175B 参数的大模型,使用标准的混合精度训练(BF16 参数和梯度，FP32 优化器状态),其显存需求如下:
+### 1.1 先区分模型状态与激活
 
-*   **模型参数 (BF16):** 175B × 2 bytes = 350 GB
-*   **梯度 (BF16):** 175B × 2 bytes = 350 GB
-*   **优化器状态 (Adam, FP32):** 175B × (4 bytes for master params + 4 bytes for momentum + 4 bytes for variance) = 2100 GB
-
-上述显存需求总计**2800 GB。**. 这个数字，远超地球上任何单张 GPU 的容量。而使用传统的数据并行（Data Parallelism, DP）,也只能将训练数据分布在数百甚至数千张上，但是每张卡都需要维护一份完整的优化器状态和参数副本，所以单张卡的需求带来的显存瓶颈依然存在。
-
-面对这个问题,微软的 DeepSpeed 团队提出了零冗余优化器(Zero Redundancy Optimizer，ZeRO),带来了一系列的显存优化,使得在分布式集群中高效训练超大规模模型成为可能.Zero 系列的优化,并非在传统的数据并行的基础上进行简单的修补,而是从根本上剖析并且重构了大规模集群下分布式训练的显存管理,并且经过一系列精妙的设计,实现了显存需求和训练效率之间的完美配合.
+训练不仅要存权重，还要保存梯度、优化器状态和反向所需的中间结果。普通复制式 DP 中，每张图形处理器（Graphics Processing Unit，GPU）保存完整模型状态，增加卡数不会自动降低这部分单卡占用。
 
 ![Deepspeed_Zero](./images/02DeepSpeed_memory.png)
 
-ZeRO 系列起源于微软 DeepSpeed 团队发表的一篇论文《ZeRO: Memory Optimizations Toward Training Trillion Parameter Models》.在论文中,研究人员指出,大模型训练过程中,GPU 显存主要被以下几部分所占用:
+*图 1：左侧各卡保存重复的模型状态，右侧用分片分摊状态。输入样本仍按数据并行分配，右侧不表示全部显存占用都能按卡数等分。*
 
-1.  **模型状态 (Model States):** 
-    *   **参数 (Parameters, P):** 模型权重，设参数量为 $\Phi$。其显存占用为 $\Phi$ × `sizeof(dtype_P)`。
-    *   **梯度 (Gradients, G):** 反向传播计算出的参数梯度。显存占用为 $\Phi$ × `sizeof(dtype_G)`。
-    *   **优化器状态 (Optimizer States, O):** 优化器为每个参数维护的动量、方差以及 master 参数等。以 Adam 为例，显存占用为 $3$ × $\Phi$ × `sizeof(dtype_O)`。
+本章以混合精度 Adam 为算例。Adam 是自适应矩估计（Adaptive Moment Estimation）优化器；FP16、FP32 分别为 16、32 位浮点格式，BF16 为 Brain Floating Point 16 位格式。
 
-2.  **残余状态 (Residual States):**
-    *   **激活值 (Activations, A):** 前向传播的中间结果，用于反向传播。其大小与批次大小、序列长度和模型深度强相关。ZeRO 主要不针对此项，但是可以和 Activation Checkpointing 技术高效结合,使得激活值占用的显存大幅降低
-    *   **其他:** 如临时缓冲区和显存碎片。
+| 对象 | 作用 | 本章估算采用的存储 |
+| --- | --- | --- |
+| 计算用参数 $P$ | 前向、反向使用的权重 | FP16/BF16，2 字节/元素 |
+| 参数梯度 $G$ | 损失对各参数的导数 | 假设为 2 字节/元素 |
+| FP32 主权重 | 保留较高精度的参数更新结果 | 4 字节/元素 |
+| Adam 一阶矩、二阶矩 | 分别跟踪梯度及其平方的移动平均 | 各 4 字节/元素 |
+| 激活 | 反向需要的层输入、中间结果 | 取决于微批次、序列长度、层结构和重计算策略 |
 
-传统的深度学习主要采用 DP 并行的方式进行多设备训练.在标准的 PyTorch `DistributedDataParallel` (DDP)中，每个 GPU 都持有模型状态的完整副本。
+为方便计数，把主权重和两份矩状态合记为优化器相关状态 $O$，即每个参数对应 **12 字节**。主权重不是 Adam 算法本身的矩状态，而是这里采用的混合精度实现所维护的权重副本。
 
-*   **单 GPU 显存公式:**
-    假设混合精度训练（参数和梯度为 BF16，优化器状态为 FP32），单 GPU 所需显存为：
-    $$ M_{DP} = (\Phi \times 2) + (\Phi \times 2) + (\Phi \times 12) = 16\Phi \text{bytes} $$
+**2 字节梯度是估算假设，不是 BF16 训练的固定规则。** 梯度累积、通信和优化器更新可以使用不同精度，应分别核对。
 
-*   **通信分析:**
-    在反向传播后，所有 GPU 需要同步梯度。这通过一次 **All-Reduce** 操作完成。对于拥有 `N` 个 GPU 的系统，其通信量近似为：
-    $$ C_{DP} = 2 \times \frac{N-1}{N} \times (\Phi \times 2) \approx 4\Phi \text{bytes} $$
-    （注：`sizeof(BF16)`为 2，系数 2 表示数据发送和接收）。
+### 1.2 统一符号与计算口径
 
-在 DP 的简洁性背后是巨大的显存冗余，这正是 ZeRO 要解决的核心问题。
+| 符号 | 含义 |
+| --- | --- |
+| $N$ | 参数元素总数，展平后形状为 $[N]$ |
+| $D$ | ZeRO 所在 DP 组的进程数；本文每进程使用一张卡 |
+| $r$ | 组内进程编号，$r=0,\ldots,D-1$ |
+| $p,g,o$ | 每个参数对应的参数、梯度、优化器相关状态字节数 |
+| $b$ | 每卡每个微批次的样本数 |
 
-## 2.Zero-DP 和 Zero-R
+假设分片均匀、$N$ 能被 $D$ 整除，不计填充。没有 ZeRO 时，每卡模型状态为：
 
-正如我们前文提到,ZeRO 系列主要致力于处理大模型训练中的冗余显存,针对模型状态和残余状态中的显存碎片,ZeRO 分别提出了 ZeRO-DP 和 ZeRO-R.
+$$
+M_{\mathrm{DP}}=(p+g+o)N.
+$$
 
-### ZeRO-DP 基本原理
+取 $p=2,g=2,o=12$，得到 $16N$ 字节。1750 亿参数对应 $2.8\times10^{12}$ 字节，即 **2800 GB**，尚未计入激活和缓冲。本文 GB 使用十进制 $10^9$ 字节；GiB 使用 $2^{30}$ 字节。
 
-ZeRO-DP 对模型状态进行切分，具体来说，每个设备都只会会存储 $\frac{1}{N_d}$ 的模型状态（其中 $N_d$ 为并行度），在需要时通过集合通信 All-gather 获取参数。ZeRO-DP 保留了数据并行训练（DP）的高效率，同时实现了模型并行（MP）的显存效率优势。由于数据并行的模型状态在所有数据并行进程中冗余存储，因此显存效率低下，但数据并行具有更高的计算粒度和更低的通信量，从而具有更高的训练效率。模型并行的通信开销很大，因此可扩展性比数据并行低，但 MP 对模型状态进行分区，获得了较高的显存效率。ZeRO-DP 对模型状态进行分区而不是复制它们，并使用动态通信调度最小化通信量。通过这样做，ZeRO-DP 随着数据并行程度的增加线性减少模型在每块设备的显存占用，同时保持通信量接近默认数据并行的通信量，从而保持效率。
+## 2. ZeRO-1/2/3 到底切分什么
+
+### 2.1 从完整副本到分片
+
+ZeRO 的三个阶段逐步叠加，而不是三个互不相关的算法。
+
+| 方式 | 每卡计算用参数 $P$ | 每卡梯度 $G$ | 每卡优化器相关状态 $O$ |
+| --- | --- | --- | --- |
+| 普通 DP / ZeRO-0 | 完整 $[N]$ | 完整 $[N]$ | 三份完整 $[N]$ |
+| ZeRO-1 | 完整 $[N]$ | 按完整梯度预算 | 三份分片 $[N/D]$ |
+| ZeRO-2 | 完整 $[N]$ | 归约后保留 $[N/D]$ | 三份分片 $[N/D]$ |
+| ZeRO-3 | 常驻分片 $[N/D]$ | 归约后保留 $[N/D]$ | 三份分片 $[N/D]$ |
+
+表中描述存储布局与预算。反向传播会临时产生当前层或当前桶的梯度；ZeRO-2/3 并不是“从来不产生其他参数的梯度”。ZeRO-3 计算前也会临时汇集所需参数。[1][2]
 
 ![混精度训练](./images/02DeepSpeedZeROMemory.jpg)
 
-ZeRO-DP 有三个主要优化阶段，分别对应于优化器状态、梯度和参数的划分，在累积启用时：
+*图 2：蓝、橙、绿分别表示参数、梯度、优化器相关状态。原图的 $\Psi$ 对应本文 $N$，$N_d$ 对应 $D$，$K=12$ 对应 $o$；$P_{os}$、$P_{os+g}$、$P_{os+g+p}$ 分别对应 ZeRO-1、2、3。*
 
-1) **优化状态分区**（Partition optimizer states，$P_{os}$）：又称为 ZeRO-1，将优化器状态按并行度均匀分区，每个进程只需存储 $\frac{1}{N_d}$ 的优化器状态（其中 $N_d$ 为并行度）。这可将显存消耗减少到 1 / 4，且无额外通信开销。
+### 2.2 四卡例子：谁负责哪一段
 
-2) **添加梯度分区**（Partition gradients，$P_{os+g}$）：又称为 ZeRO-2，在优化器状态分区的基础上，对梯度也进行分区。每个进程只需存储用于更新自身参数分区所需的梯度。这可减少 8 倍的显存消耗，且无额外通信开销。
+设一层权重 $W:[4,8]$，不含偏置。展平为 $w:[32]$ 后，按连续元素分成四段：
 
-3) **添加参数分区**（Partition parameters，$P_{os+g+p}$）：又称为 ZeRO-3，在优化器状态和梯度分区的基础上，对参数也进行分区。每个进程只存储自身的参数分区，在前向反向传播时需要从其他进程收集所需的参数分区。这会使通信量增加约 50%，但可以实现与并行度 $N_d$ 成正比的显存减少。
+| 分片拥有者 | 元素区间（左闭右开） | 本卡负责更新的状态 |
+| --- | --- | --- |
+| GPU 0 | $w[0:8]$ | 第 0 段的主权重、一阶矩、二阶矩，各 $[8]$ |
+| GPU 1 | $w[8:16]$ | 第 1 段的三份状态，各 $[8]$ |
+| GPU 2 | $w[16:24]$ | 第 2 段的三份状态，各 $[8]$ |
+| GPU 3 | $w[24:32]$ | 第 3 段的三份状态，各 $[8]$ |
 
-通过这三个阶段的优化，ZeRO-DP 最终能够在保持数据并行高效的同时，将每个设备的显存消耗降低至 $\frac{1}{N_d}$ 的水平，使得利用少量硬件资源训练万亿参数等超大模型成为可能。
+这里每段恰好对应一行，只是为了便于理解。真实实现可把一个参数组展平后分片，分界不必与层或矩阵行对齐。
 
-### ZeRO-DP 通信分析
+- **ZeRO-1**：每卡仍保存完整 $w:[32]$，但只维护本卡负责的三份 $[8]$ 优化器相关状态。
+- **ZeRO-2**：进一步只保留本卡负责的归约后梯度 $[8]$。
+- **ZeRO-3**：计算用权重也只常驻本卡 $[8]$，用到该层时再汇集为 $[32]$，恢复为 $W:[4,8]$。
 
-Zero-DP 通过将训练过程中的冗余显存分散到不同的计算 device 上,来实现显存消耗的大幅减少,这种优化带来的代价就是通信的变化.事实上,和传统的数据并行相比, Zero-DP 的三个阶段中,$P_{os}$ 和 $P_{os+g}$ 的通信效率基本一致,而 $P_{os+g+p}$ 则增加了一半的总通信量
+每卡使用不同输入 $X_r:[2,4]$。普通 ZeRO-3 汇集完整权重后，执行 $X_rW:[2,4][4,8]\to[2,8]$。这与张量并行（Tensor Parallelism，TP）让多卡协作计算同一层矩阵分片不同。
 
-最先进的 All-reduce 实现采用两步法，第一步是 Reduce-scatte 操作，一个是 All-gather 操作，每个流程的总数据移动量为 $\Psi$ 个元素（对于 $\Psi$ 个元素的数据）。因此，标准 DP 在每个训练步骤中会产生 2 $\Psi$ 次数据移动。
+## 3. 通信怎样把分片连接起来
 
-通过梯度分区（$P_{os+g}$），每个进程只存储更新相应参数分区所需的梯度部分。因此，ZeRO 只需要对梯度先进行 Reduce-scatte 操作，产生的通信量为 $\Psi$。在每个进程更新完自己负责的参数分区后，会执行一次 All-gather，从所有数据并行进程中收集所有更新的参数。这也会产生 $\Psi$ 的通信量。因此，每个训练步骤的总通信量为 $\Psi$ + $\Psi$ = 2 $\Psi$，与标准 DP 相同。
+### 3.1 三种集合通信各做什么
 
-在参数分区（$P_{os+g+p}$）后，每个数据并行进程只存储其更新的参数。因此，在前向传播过程中，它需要接收所有其他分区的参数。不过，这可以通过流水线操作来避免内存开销——在对模型中与特定分区对应的部分进行前向传播计算之前，负责该分区的数据并行进程可以向所有数据并行进程广播权重。一旦该分区的前向传播计算完成，参数就可以被丢弃。因此，总通信量为 $\Psi × N_d / N_d = \Psi$。我们通过在整个前向传播中通过 All-gather 传播参数已重新获取参数，并在使用完参数后将其丢弃。而在后向传播时，需要以相反的顺序再次进行参数获取。参数的通信为 2 $\Psi$，在参数更新时只需要执行一个 Reduce-scatte 操作，通信量为 $\Psi$，因此总通信量是 3 $\Psi$，是标准 DP 的 1.5 倍。
+集合通信要求同一进程组的成员协作。下表仍用四卡、32 个元素说明；梯度归约先按求和描述，训练时按约定缩放为平均梯度。
 
-### ZeRO-R 基本原理
+| 通信 | 通信前 | 通信后 | 是否做数值运算 |
+| --- | --- | --- | --- |
+| 全收集（All-Gather） | 每卡持有不同分片 $[8]$ | 每卡获得完整 $[32]$ | 拼接，不求和 |
+| 归约散发（Reduce-Scatter） | 每卡贡献逻辑向量 $[32]$ | 跨卡求和后，每卡获得不同分片 $[8]$ | 先归约，再分配 |
+| 全归约（All-Reduce） | 每卡贡献逻辑向量 $[32]$ | 每卡获得相同的归约结果 $[32]$ | 归约并复制结果 |
 
-除了优化模型状态（优化器状态、梯度和参数）的显存利用率，ZeRO 还专门针对剩余状态（如激活数据、临时缓冲区和显存碎片等）进行了优化，以进一步减少显存开销。ZeRO-R 对剩余状态进行了切分和优化，主要包括以下几个策略:
+例如各卡对第 $j$ 段产生梯度 $g_{r,j}:[8]$。在各卡样本数相同、采用平均损失的例子中，拥有者 $j$ 需要：
 
-1) **分区激活检查点**（Partitioned Activation Checkpointing，$P_{a}$）：解决了模型并行时激活显存冗余的问题。在模型并行中，每个设备需要保存完整的输入激活数据才能计算自己分到的模型部分。ZeRO-R 将激活检查点按模型并行度 $N_m$ 进行分区，每个设备只需存储 $\frac{1}{N_m}$ 的激活检查点。在需要时通过 All-gather 操作重构出完整激活数据，从而按 $N_m$ 的比例减少激活显存。在极端情况下，当模型规模很大时，ZeRO-R 甚至可以将分区后的激活检查点卸载到 CPU 显存（$P_{a+cpu}$），再次降低设备显存占用，代价是额外的主机-设备通信开销。该策略在大模型训练时会自动开启，以保证足够的设备显存用于计算。
+$$
+\bar g_j=\frac{1}{4}\sum_{r=0}^{3}g_{r,j},\qquad \bar g_j:[8].
+$$
 
-2) **恒定大小的缓冲区**（Constant Size Buffer，$C_{b}$）：一些操作如 All-reduce 需要将张量拼成连续的临时缓冲区，使用恒定大小的缓冲区来避免临时缓冲区随着模型大小的增加而爆炸，同时使它们足够大以保持效率。
+它必须包含**所有卡的样本贡献**，不能仅用拥有者自身的局部梯度更新。
 
-3) **显存碎片化整理**（Memory Defragmentation，$M_{d}$）：在训练过程中，由于激活检查点、梯度等张量生命周期的差异，会产生大量显存碎片。ZeRO-R 通过预分配和动态管理这些张量的显存，减少了显存碎片和显存分配器的开销，提高了显存利用率。
+### 3.2 ZeRO-1 与 ZeRO-2：先归约梯度，再同步新参数
 
-通过以上优化策略，ZeRO-R 很好地补充和完善了 ZeRO-DP 优化模型状态显存的功能。两者相结合，ZeRO 优化器能最大限度减少大模型训练的显存占用，为未来万亿参数级别的神经网络模型铺平了道路。
+以 ZeRO-2 为例，一次更新可以概括为下图。“每卡 $[32]$”是待归约梯度的逻辑总量，运行时可逐桶产生和归约，不必一次性常驻完整向量。
 
-### ZeRO-R 通信分析
-
-ZeRO-R 的通信开销取决于模型大小、检查点策略和模型并行（MP）策略。与标准模型并行相比（其中没有对激活进行分区），ZeRO-R $P_{a}$ 的通信开销通常不到标准模型并行的十分之一。
-
-在使用激活检查点的 Megatron-LM 中，每个 Transformer 块在前向传播中执行两次大小为 $batch × seq × length × hidden\_dim$ 的 All-reduce 操作，然后在反向传播中再执行两次。在使用激活检查点的 ZeRO-R 中，每个前向重计算激活之前需要执行一个额外的 All-gather 操作。通常情况下，对于每个 Transformer 块的输入激活进行检查点，因此每个 Transformer 块需要一个 All-gather 操作。因此，ZeRO-R $P_{a}$ 的通信开销为 $seq\_length × hidden\_dim$，仅增加不到 10%。
-
-当 MP 与 DP 一起使用时，ZeRO-R $P_{a}$ 可以将数据并行通信量减少一个数量级，而模型并行通信量只增加 10%，并且当数据并行通信是性能瓶颈时，可以显着提高效率。通过模型并行可以减少数据并行的内存消耗，从而可以成比例地增加批处理大小。对于大模型，MP 可以增加到 16（DGX-2 节点上的 GPU 数量），从而可以将批处理大小增加多达 16 倍。数据并行训练的通信量与批处理大小成反比，由于 $P_{a}$ 导致批处理大小增加一个数量级，可能会导致数据并行通信量减少一个数量级。
-
-如果应用 $P_{a+cpu}$，则分区激活检查点会被卸载到 CPU，将激活内存需求减少到接近零，但与 $P_{a}$ 相比，往返 CPU 内存的数据移动增加了 2 倍。如果 DP 通信量是主要瓶颈，由于批处理大小较小，$P_{a+cpu}$ 也可以通过增加批处理大小来提高效率，只要 CPU 数据传输开销小于 DP 通信量开销。
-
-## 3.ZeRO 在 DeepSpeed 中的实现
-
-接下来,我们通过 Zero 系列在 DeepSpeed 中的实现来进一步剖析 DeepSpeed 是如何将 ZeRO 的三个阶段落地,进而实现高效的通信和训练.
-
-### 初始化与封装：`deepspeed.initialize` 
-
-Deepspeed 的优化逻辑一切始于 `deepspeed.initialize`。这个函数是用户与 DeepSpeed 交互的入口。
-
-```python
-model, optimizer, _, _ = deepspeed.initialize(
-    args=args,
-    model=model,
-    model_parameters=model.parameters(),
-    config=deepspeed_config
-)
+```mermaid
+flowchart TB
+    A["四卡分别计算本地样本<br/>每卡梯度逻辑总量 [32]"]
+    A -->|"Reduce-Scatter<br/>归约并缩放"| B["GPU r 获得归约梯度 [8]<br/>r = 0、1、2、3"]
+    B --> C["各卡更新本地状态<br/>主权重、两份矩状态各 [8]"]
+    C --> D["各卡生成新参数分片 [8]<br/>转为计算所用精度"]
+    D -->|"All-Gather"| E["每卡恢复新参数 [32]<br/>reshape 为 W [4,8]"]
 ```
 
-根据配置文件中 `zero_optimization` 的 `stage` 参数（1, 2, 或 3），`initialize` 函数会创建并返回一个 `DeepSpeedEngine` 实例。这个引擎封装了模型、优化器，并接管了训练循环的核心逻辑（`train_batch`, `backward`, `step`）。
+*补充图 A：ZeRO-2 的一次更新。箭头依次表示梯度归约、拥有者更新和参数同步；优化器矩状态留在拥有者上，不需要全收集。*
 
-### Stage 1 & 2 的实现核心：`DeepSpeedZeroOptimizer`
+ZeRO-1 也只由拥有者更新相应参数段，再同步新参数。它与 ZeRO-2 的关键区别是**是否分片保留梯度**，而不是“是否会通信”。具体实现可以把梯度归约到对应拥有者，不必机械地执行“完整 All-Reduce 后再 All-Gather”。
 
-对于 Stage 1 和 2，核心逻辑封装在 `deepspeed.runtime.zero.stage1_and_2.DeepSpeedZeroOptimizer` 类中。它封装了用户定义的优化器（如 Adam）(deepspeed/runtime/zero/stage_1_and_2.py)。
+若累积多个微批次，参数在累积边界才更新，但梯度归约可能在各微批次的反向中发生。不要把“每次更新一次”误读为“期间只通信一次”。
 
-*   **参数分区:** 在初始化时，它会根据当前 GPU 的 rank，确定自己负责哪一部分参数，并仅为这部分参数创建和维护优化器状态。
-    ```python
-    # loop to deal with groups
-    for i, param_group in enumerate(self.optimizer.param_groups):
-        ...
-        # divide the flat weights into near equal partition equal to the data parallel degree
-        # each process will compute on a different part of the partition
-        # self.bit16_groups_flat: 展平的 bf16 参数,用于减少内存碎片
-        data_parallel_partitions = self.get_data_parallel_partitions(self.bit16_groups_flat[i], i)
-        self.parallel_partitioned_bit16_groups.append(data_parallel_partitions)
-        ...
-        # A partition of the fp32 master weights that will be updated by this process.
-        # Note that the params in single_partition_of_fp32_groups is cloned and detached
-        # from the origin params of the model.
-        if not fp16_master_weights_and_gradients:
-            weights_partition = self.parallel_partitioned_bit16_groups[i][partition_id].to(
-                self.device).clone().float().detach()
-        else:
-            weights_partition = self.parallel_partitioned_bit16_groups[i][partition_id].to(
-                self.device).clone().half().detach()
-        self.single_partition_of_fp32_groups.append(weights_partition)
+### 3.3 ZeRO-3：用到一层，汇集一层
 
-        # Set local optimizer to have flat params of its own partition.
-        # After this, the local optimizer will only contain its own partition of params.
-        # In that case, the local optimizer only saves the states(momentum, variance, etc.) related to its partition's params(zero stage1).
-        self.single_partition_of_fp32_groups[
-            i].requires_grad = True  # keep this in case internal optimizer uses it
-        param_group['params'] = [self.single_partition_of_fp32_groups[i]]
-        ...
-    ```
+ZeRO-3 的参数常驻布局也是分片。下图跟踪某一层，其他层以相同原则调度。
 
-*   **梯度 Reduce-Scatter (Stage 2):** 当用户调用 `model.backward(loss)` 后，`DeepSpeedEngine` 会拦截梯度。对于 Stage 2，它会调用一个类似 `reduce_scatter_gradients` 的方法，该方法内部使用 `torch.distributed.reduce_scatter_tensor` 将梯度分区到对应的 GPU 上。
+```mermaid
+flowchart TB
+    A["常驻：每卡权重分片 [8]"]
+    A -->|"前向 All-Gather"| B["每卡临时权重 [32]<br/>恢复 W [4,8]"]
+    B --> C["本地前向<br/>X [2,4] × W [4,8]<br/>得到 Y [2,8]"]
+    C --> D["按策略释放完整权重<br/>保留本卡分片 [8]"]
+    D -->|"反向前 All-Gather"| E["每卡恢复 W [4,8]<br/>本地参数梯度 [4,8]"]
+    E -->|"梯度展平 [32]<br/>Reduce-Scatter 与缩放"| F["每卡归约梯度 [8]<br/>更新本卡权重与状态"]
+    F --> G["新权重仍按 [8] 分片<br/>下次使用时再汇集"]
+```
 
-*   **参数同步:** 当用户调用 `model.step()` 时，`DeepSpeedZeroOptimizer` 的 `step()` 方法被触发。
-    1.  它使用分区后的梯度和优化器状态，更新本地持有的那部分 FP32 参数。
-    2.  更新后，它会调用一个内部函数（如 `_update_model_params`），该函数执行 **All-Gather** 操作，将所有分区更新后的参数收集起来，组成完整的模型参数，并更新到模型的所有 BF16 参数上。
+*补充图 B：ZeRO-3 的参数生命周期。展示“前向后释放、反向前重新汇集”的基准流程；预取、缓存及参数持久化可能改变实际汇集次数。*
 
-### Stage 3：参数动态管理
+图中的“更新”发生在整个模型完成本次梯度累积、达到更新边界之后，并非某层梯度一产生就立即修改该层权重。
 
-Stage 3 的实现则完全不同，它从模型构建之初就介入了。核心逻辑封装在 `deepspeed.runtime.zero.stage3.DeepSpeedZeroOptimizer_Stage3` 类中。(deepspeed/runtime/zero/stage3.py)。
+设本层输出梯度为 $G_Y:[2,8]$，本地反向的主要矩阵尺寸为：
 
-*   **低内存初始化:** 用户需要使用 `deepspeed.zero.Init()` 上下文管理器来实例化模型。
-    ```python
-    with deepspeed.zero.Init():
-        model = MyLargeModel()
-    ```
-    在这个上下文中，`torch.nn.Parameter` 的行为被修改。参数在创建时不会立即分配内存，而是被转换为 `deepspeed.runtime.zero.partition_parameters.PartitionedParameter`。它只在自己所属的 GPU 上分配 `1/N` 的内存，在其他 GPU 上则是一个占位符。
+$$
+G_W=X^\top G_Y:[4,2][2,8]\to[4,8],\qquad
+G_X=G_YW^\top:[2,8][8,4]\to[2,4].
+$$
 
-*   **动态参数获取 (Hooks):** Stage 3 的核心在于 PyTorch 的 **Hooks**。`DeepSpeedEngine` 会为模型中的每个 `nn.Module` 注册 `pre-forward` 和 `pre-backward` 钩子。
-    ```python
-    # Conceptual Pseudocode for Stage 3 Engine
-    def _pre_forward_module_hook(module, *args):
-        # Before entering a module's forward pass
-        # 1. Identify all parameters needed by this module.
-        # 2. Issue a non-blocking All-Gather to fetch these parameters.
-        # 3. Wait for the communication to complete.
-        # 4. Populate the module's parameters with the full tensors.
-        module.gather_params()
+$G_W$ 是需要在 DP 组内归约的参数梯度；$G_X$ 沿本卡计算图传回前一层。ZeRO 不会自动把这些激活梯度按 DP 组分片。
 
-    def _post_forward_module_hook(module, *args):
-        # After exiting a module's forward pass
-        # 1. Release the memory of parameters that are not part of this GPU's partition.
-        module.release_params()
-    
-    # Similar hooks exist for the backward pass.
-    ```
+## 4. 显存能省多少
 
-*   **分桶 (Bucketing):** 为了避免为每个微小的参数都发起一次 All-Gather，DeepSpeed 会将参数分组到更大的“桶”中。通信以桶为单位进行，这极大地提高了网络效率，将大量小通信合并为少量大通信。
+### 4.1 通用公式与具体算例
 
-## 4. ZeRO 系列的进一步探索
+把“复制项”直接相加，把“分片项”除以 $D$：
 
-在已有的三阶段 ZeRO-DP 和 ZeRO-R 优化下,DeepSpeed 进一步对显存和通信效率进行了优化.后续的工作主要是 ZeRO-Infinity 和 ZeRO++.
+| 方式 | 每卡模型状态字节数 | 取 $p=2,g=2,o=12$ |
+| --- | --- | --- |
+| 普通 DP | $(p+g+o)N$ | $16N$ |
+| ZeRO-1 | $(p+g)N+oN/D$ | $4N+12N/D$ |
+| ZeRO-2 | $pN+(g+o)N/D$ | $2N+14N/D$ |
+| ZeRO-3 | $(p+g+o)N/D$ | $16N/D$ |
 
-### ZeRO-Infinity
+设 $N=10^9$，即 10 亿参数，$D=4$：
 
-ZeRO-Infinity 是 ZeRO 的扩展功能，可以将深度学习训练扩展到前所未有的规模。具体来说它突破了 GPU 内存壁垒的限制，并使得能够训练具有数万亿个参数的模型成为可能，这是迄今为止最先进系统所无法企及的量级。此外，它为训练具有一千万亿个参数的模型铺平了道路——充分利用系统的全部内存容量，利用 GPU、CPU 和 Non-Volatile Memory Express（NVMe）等所有异构内存组件的能力。
+| 方式 | 参数 | 梯度 | 优化器相关状态 | 每卡合计 |
+| --- | --- | --- | --- | --- |
+| 普通 DP | 2 GB | 2 GB | 12 GB | **16 GB** |
+| ZeRO-1 | 2 GB | 2 GB | 3 GB | **7 GB** |
+| ZeRO-2 | 2 GB | 0.5 GB | 3 GB | **5.5 GB** |
+| ZeRO-3 | 0.5 GB | 0.5 GB | 3 GB | **4 GB** |
+
+原图 2 用的是 $N=7.5\times10^9,D=64$，结果为 120、31.40625、16.640625、1.875 GB，与图中的四舍五入数值一致。
+
+“ZeRO-1 节省 4 倍、ZeRO-2 节省 8 倍”是上述精度假设下、$D$ 很大时的模型状态节省上限；四卡例子并不达到这两个倍数。ZeRO-3 的常驻模型状态理想上缩小为 $1/D$，也不等于总峰值显存缩小为 $1/D$。
+
+### 4.2 为什么公式算得下，运行仍可能溢出
+
+实际峰值还取决于**同一时刻有哪些张量存活**：
+
+$$
+M_{\mathrm{peak}}
+\approx M_{\mathrm{resident\ states}}
++M_{\mathrm{live\ activations}}
++M_{\mathrm{temporary\ gather/buffers}}
++M_{\mathrm{runtime/fragmentation}}.
+$$
+
+各项应按同时存活、去除重叠后的占用计算，不能把不同时间的峰值简单相加。
+
+| 额外占用 | 为什么存在 | 优先检查 |
+| --- | --- | --- |
+| 激活 | 每卡仍计算自己的样本 | 微批次、序列长度、激活重计算 |
+| 临时完整参数 | ZeRO-3 需要执行当前模块 | 最大模块、预取量、保留参数策略 |
+| 通信桶 | 打包梯度、参数并支持重叠 | 桶大小、通信精度、并发缓冲数量 |
+| 初始化与保存 | 可能临时构造完整模型或权重 | 分片初始化、分片检查点与权重导出方式 |
+
+例如一个 5000 万元素的缓冲区，使用 2 字节精度时约占 100 MB；多桶重叠时不能只预留这一份空间。若梯度按 4 字节保存，应把公式中的 $g$ 改为 4，而不是继续套用 $16N$。
+
+## 5. 通信量怎么算：先明确统计口径
+
+### 5.1 按每卡发送字节数计算
+
+下面使用环形集合通信的理想模型，**统计每卡发送量**，不把接收量再加一次。设完整向量为 $L$ 字节，$\alpha=(D-1)/D$：
+
+$$
+C_{\mathrm{AG}}=\alpha L,\qquad
+C_{\mathrm{RS}}=\alpha L,\qquad
+C_{\mathrm{AR}}=2\alpha L.
+$$
+
+All-Reduce 可分解为 Reduce-Scatter 和 All-Gather 两个阶段，因此系数是 2；**不是因为同时计算发送和接收**。同一理想模型下接收量相同，若统计收发合计需再乘 2，若统计全组发送量则乘 $D$。
+
+### 5.2 普通 DP、ZeRO-2、ZeRO-3 的对比
+
+假设一次前向、一次反向、一次参数更新；参数不跨前后向保留，忽略填充、延迟、额外标量通信。通信参数与梯度分别为 $p_c,g_c$ 字节/元素：
+
+| 方式 | 基准通信过程 | 每卡发送字节数 |
+| --- | --- | --- |
+| 普通 DP | 梯度 All-Reduce | $2\alpha g_cN$ |
+| ZeRO-2 | 梯度 Reduce-Scatter + 新参数 All-Gather | $\alpha(g_c+p_c)N$ |
+| ZeRO-3 | 前向、反向参数各 All-Gather 一次 + 梯度 Reduce-Scatter | $\alpha(2p_c+g_c)N$ |
+
+若 $p_c=g_c=2$，三者分别为 $4\alpha N$、$4\alpha N$、$6\alpha N$ 字节。四卡、10 亿参数时，分别是 **3、3、4.5 GB/卡**。这就是常见“ZeRO-2 与 DP 通信量相当，ZeRO-3 为 1.5 倍”的来源。[1]
+
+ZeRO-1 在把梯度归约到拥有者、再同步参数的安排下，也可达到相近的理论通信量；若具体路径先做完整梯度 All-Reduce 再同步参数，则不能套用这一结论。**阶段定义描述状态归属，不保证某条固定的底层通信调用链。**
+
+多微批次累积、激活重计算、参数缓存、量化和不同通信精度都会改变上述计数。通信时间还取决于消息数量、网络拓扑与计算重叠；字节数相同不代表耗时相同。
+
+## 6. 在 DeepSpeed 源码与配置中对应到哪里
+
+### 6.1 先找真实入口，再看通信实现
+
+下表路径相对于 v0.17.5 仓库根目录。普通模型通过 `deepspeed.initialize()` 返回 `DeepSpeedEngine`，训练调用 `engine.backward(loss)` 和 `engine.step()`；`train_batch()` 是流水线引擎的接口，不能混用。
+
+| 路径或类 | 阅读重点 |
+| --- | --- |
+| `deepspeed/runtime/zero/stage_1_and_2.py` 中的 `DeepSpeedZeroOptimizer` | 展平参数组，为拥有者建立 FP32 主权重分片；用 `partition_gradients` 区分阶段 |
+| 同文件的梯度归约及 `step()` 路径 | 归约桶、丢弃非本卡梯度、局部更新、同步新参数 |
+| `deepspeed/runtime/zero/stage3.py` 中的 `DeepSpeedZeroOptimizer_Stage3` | 分片梯度与优化器更新 |
+| `deepspeed/runtime/zero/partition_parameters.py` | `zero.Init`、参数分片及 `ds_tensor` 等元数据 |
+| `deepspeed/runtime/zero/parameter_offload.py`、`partitioned_param_coordinator.py` | 模块钩子、参数获取、预取、释放 |
+| `deepspeed/runtime/zero/config.py` | 配置字段、默认值与适用阶段 |
+
+例如 Stage 1/2 的源码存在 `average_tensor`、`allreduce_and_scatter` 等路径，参数同步使用通信封装；不要把 Reduce-Scatter 的数学语义写成“必然调用一次 `torch.distributed.reduce_scatter_tensor`”。[3]
+
+### 6.2 ZeRO-3 初始化也需要控制峰值
+
+小模型可以先正常构建，再由引擎分片。大模型若连初始化都放不下，应在构建阶段使用 `deepspeed.zero.Init(...)`，尽早转换和分片参数。[4]
+
+它不是“参数完全不分配内存”，也不是“一个参数只存在某一张卡，其他卡都是空的”。各进程保留参数对象及分片元数据；完整参数在初始化、计算或显式访问时可能临时物化，本地分片由相应存储管理。
+
+模型含共享权重、跨模块访问参数或自定义更新时，需要核对外部参数管理接口。参数汇集后能否及时释放，也取决于模块使用方式和缓存策略。
+
+### 6.3 从小配置开始
+
+以下为合并进训练配置的 **ZeRO 配置片段**，不是独立训练程序。JSON（JavaScript Object Notation，JavaScript 对象表示法）字段说明以 v0.17.5 为基线：
+
+```json
+{
+  "zero_optimization": {
+    "stage": 2,
+    "contiguous_gradients": true,
+    "reduce_scatter": true,
+    "overlap_comm": true,
+    "reduce_bucket_size": 50000000,
+    "allgather_bucket_size": 50000000
+  }
+}
+```
+
+| 配置项 | 用途及边界 |
+| --- | --- |
+| `stage` | 选择状态分片范围；不是越大越快 |
+| `contiguous_gradients` | 将梯度组织到连续缓冲，减少碎片 |
+| `reduce_scatter` | 选择面向拥有者的梯度归约路径；底层实现依版本而异 |
+| `overlap_comm` | 尝试重叠计算与通信，可能增加同时存活的缓冲 |
+| `reduce_bucket_size`、`allgather_bucket_size` | 上例归约、参数汇集桶的元素数，**单位不是字节** |
+| `stage3_prefetch_bucket_size`、`stage3_param_persistence_threshold` | Stage 3 的预取与小参数保留策略，需要在显存和通信间取舍 |
+| `offload_optimizer` | v0.17.5 支持 Stage 1/2/3；卸载优化器相关状态，更新计算在 CPU 上 |
+| `offload_param` | v0.17.5 仅用于 Stage 3，指定参数分片的卸载位置 |
+
+CPU 是中央处理器（Central Processing Unit）。先跑通不卸载的小配置，再依据实际峰值和通信耗时调整。完整训练调用见[框架介绍](./01DeepSpeedIntro.md)，实践见 [ZeRO 代码练习](./Code01ZeRO.md)。[8]
+
+## 7. ZeRO-R：处理模型状态之外的占用
+
+ZeRO 论文把模型状态优化称为 ZeRO-DP，把激活、临时缓冲和碎片等剩余占用的优化称为 ZeRO-R。**ZeRO-R 不是另一个 `stage` 值，也不会仅因模型变大就自动启用所有功能。**
+
+| 方法 | 保存什么、恢复什么 | 主要代价 |
+| --- | --- | --- |
+| 激活重计算（Activation Checkpointing） | 保存片段边界输入，反向重跑片段 | 额外计算 |
+| 分片激活检查点 | 对模型并行组中原本重复的边界激活分片，需要时汇集 | 额外 All-Gather |
+| 激活卸载 | 把选定激活暂存 CPU 内存，需要时搬回 | 主机与 GPU 之间的传输 |
+| 有界缓冲与连续存储 | 控制临时桶大小，减少碎片 | 需平衡缓冲容量与通信效率 |
+
+例如某边界激活为 $[2,1024,4096]$，共有 8,388,608 个元素。以 2 字节存储，共 16 MiB；若在四卡模型并行组中原本重复保存，可展平后每卡存 $[2097152]$，即 4 MiB。恢复时 All-Gather 得到 $[8388608]$，再还原原形状。1 MiB 为 $2^{20}$ 字节。
+
+该例不能直接用于 DP 组：DP 各卡的样本不同，激活通常不是可互相替代的副本。分片检查点需要显式配置并实际使用对应检查点接口；保存的边界张量也不等于全部激活。[5]
+
+增加微批次可能摊薄每个样本的通信成本，但不会让固定模型每次梯度归约的字节数自动变小。“通信只增加不到 10%”等结论依赖特定模型和调度，不作为通用估算。
+
+## 8. ZeRO-Infinity 与 ZeRO++：容量和带宽的进一步取舍
+
+### 8.1 ZeRO-Infinity：把状态放到更大的存储层
+
+分片解决“由谁保存”，卸载解决“保存在哪里”。ZeRO-Infinity 结合 ZeRO-3 与 GPU、CPU 内存和 NVMe 存储；NVMe 是非易失性存储器高速接口（Non-Volatile Memory Express）。
 
 ![ZeRO-Infinity](./images/02DeepSpeedZeROInf.png)
 
-在 ZeRO-Infinity 中，参数从较慢的内存源（如 CPU 和 NVMe）无缝迁移到 GPU，其中它们被合并为完整的层。梯度计算完成后，这些参数被聚合、重新分区，然后重新卸载回较慢的内存组件。其中内存资源的编排确保了最佳利用和最小的开销。这种创新的方法不仅克服了 GPU 内存的常规限制，而且提升了分布式框架的可扩展性。
+*图 3：本地分片在慢速存储与 GPU 间搬运；GPU 之间汇集所需参数、归约梯度。图中的 $A$ 表示优化器状态，不表示激活。*
 
-我们可以使用**峰值计算吞吐量（$peak_{tp}$）**、**数据移动带宽（$bw$）** 及其**算术强度（$ait$）** 来估算 ZeRO-Infinity 的训练效率。
+以本章四卡权重为例，每进程负责的 $[8]$ 参数分片先从其存储位置进入 GPU，再参与 All-Gather，临时得到 $[32]$。梯度归约得到本卡 $[8]$ 后交给拥有者的更新路径。NVMe 通常还涉及主机内存缓冲；卸载不会消除 GPU 上的临时完整参数和计算工作区。
 
-工作负载的**算术强度（AIT）** 是总计算量与计算所需数据量之间的比率。它描述了每次数据移动所需的计算量。AIT 越高，意味着对数据移动带宽的要求越低，因为每加载一个数据，加速器就能完成更多计算。
-
-$$
-ait = \frac{total\_computation}{total\_data\_movement}
-$$
-
-因此效率可以大致估算为：
+可用简单模型理解带宽约束。设计算量为 $F$ 次浮点运算、所研究链路搬运 $V$ 字节，有效计算吞吐为 $R$、有效带宽为 $B$：
 
 $$
-\begin{aligned}
-
-compute\_time 
-&= \frac{total\_computation}{peak_{tp}} \\
-
-communication\_time 
-&= \frac{total\_data\_movement}{bw} \\
-&= \frac{total\_computation}{ait × bw} \\
-
-efficienc𝑦 
-&= \frac{compute\_time}{compute\_time+communication\_time} \\
-&= \frac{ait × bw}{ait × bw + peak_{tp}}
-
-\end{aligned}
+T_{\mathrm{compute}}=F/R,\qquad T_{\mathrm{transfer}}=V/B.
 $$
 
-我们同样以 Transformer 为例：每次迭代的总计算量可以由参数数量、序列长度和批量大小估算，即对于前向传播为 $2 × bsz × seq × params$，反向传播的成本大约是正向传播的两倍。因此我们可以估算计算量：
+定义算术强度 $I=F/V$，单位为“浮点运算/字节”。在**不能重叠**的简化模型下，计算时间占比为：
 
 $$
-computation\_per\_iter = 2 × 4 × bsz × seq × parameters = 2 × 4 × 12 × bsz × seq × nl × hd^2
+\eta=\frac{F/R}{F/R+V/B}=\frac{IB}{IB+R}.
 $$
 
-在前向和反向传播期间，模型参数必须从源位置加载到 GPU 寄存器至少两次（前向传播期间和实际后向传播期间），导致 2 次的数据移动。在存在激活检查点的情况下，可以在向后传递过程中额外加载一次参数以进行重新计算。此外，梯度必须至少从 GPU 寄存器存储到其最终位置一次。因此，假设参数和梯度存储在相同的最终位置，则前向和后向传递期间的总数据移动将为 $4 × parameters$，即 $2 × 4 × parameters$（以字节为单位）。因此参数和梯度的 ait 为：
+若两者能理想重叠，时间下界接近 $\max(F/R,V/B)$；真实训练还包含依赖、调度及更新开销。必须明确 $V$ 统计的是哪条链路，不能把 GPU 显存读写、跨卡通信和 NVMe 读写混成同一带宽。特定硬件实验中的带宽与效率数值不适合作为通用阈值。[6]
 
-$$
-seq × bsz
-$$
+### 8.2 ZeRO++：减少跨卡通信负担
 
-在优化器迭代期间，必须至少读取一次优化器状态，​​并且必须至少写入一次优化器状态。因此，总数据移动量为 $2 × optimizer_states$，大约为 $2 × 16 × parameters$ 字节。因此，在完整的训练迭代期间，优化器状态的 ait 为：
+ZeRO++ 在 ZeRO-3 基础上提出三种通信优化，适合进一步研究通信成为瓶颈的场景：[7]
 
-$$
-seq × bsz/4
-$$
-
-在前向传播期间，激活检查点必须保存到其最终位置，并且必须在后向传播期间获取。因此，激活检查点的总数据移动量（以字节为单位）为 $2 × total\_activation\_checkpoints\_in\_b𝑦tes$，带入我们之间计算的激活检查点大小，可以得到总数据移动量 $4 × nl/ci × hd × seq × bsz$。所以激活检查点的 ait 为：
-
-$$
-24 × hd × ci
-$$
-
-模型状态和激活检查点对带宽的要求大不相同。前者只取决于**批量大小和序列长度**，而后者只取决于**激活检查点的频率和模型的隐藏维度大小**。在实际中，参数和梯度的带宽超过 70 GB/s，即使是最小的批处理量，也能实现超过 50% 的效率。在这种带宽下，数据移动理论上可以与计算完全重叠，从而实现 100% 的效率。与参数和梯度相比，优化器状态需要高出近 4 倍的带宽才能达到 50% 的效率。此外，优化器状态在前向和后向传播结束时更新，不能与计算重叠。因此，它们需要更大的带宽来保持整个 DL 工作负载的效率。例如，在每个 GPU 的批处理量为 2 的情况下，要达到 90% 的效率，需要近 1.5 TB/s 的有效带宽，甚至超过了 GPU 内存带宽。启用激活检查点后，即使隐藏大小为 2K，2 GB/s 的微薄带宽也能维持 50% 以上的效率。当隐藏大小超过 8K 时，带宽需求降至 1 GB/s 以下。
-
-### ZeRO++
-
-尽管 DeepSpeed 的 ZeRO 系列通过 Zero-DP 和 Zero-R 重构训练显存分配以及通过 ZeRO-Infinity 利用异构设备为大规模的模型训练提供了强大的解决方案,并且这些技术已经被广泛应用于大规模的模型训练中.但是,在某些关键的训练场景下,跨 GPU 的数据传输开销较大,从而使得高效训练成为更大的挑战.例如,当在很多 GPU 设备上训练一个较大的 batch size 时,每个 GPU 上的本地 batch size 则相对较小,需要进行频繁的通信.而在某些相对低端的 GPU 上训练时,跨节点的通信带宽往往受限,从而导致通信延迟相对较高.在这些场景下,ZeRO 的加速能力被通信限制,无法实现更高效的训练.
-
-为了解决这个问题,DeepSpeed 进而提出了 ZeRO++.ZeRO++是一个基于 ZeRO 构建的通信优化的系统,旨在使大模型的高效训练不受批次大小和跨设备通信带宽的限制.ZeRO++主要主要利用量化,结合数据以及通信重映射的方式,相较于 ZeRO,将训练过程中的总通信量减小四倍,且不影响模型质量. 尽管 ZeRO++主要被设计用于训练,但是由于在 ZeRO 的训练和推理过程中,通信的开销是相似的,其也可以被使用在推理中.进而加速模型的推理过程.
-
-回顾前文所述,假设模型总参数量的为 $\Phi$, 在前向过程中,ZeRO 需要执行 all-gather 操作来收集每一层的参数.考虑重计算的情况下,在反向过程中,ZeRO 则首先需要执行前向相似的操作来收集参数,然后通过 reduce-scatter 来对参数的梯度进行规约聚合.因此,ZeRO 则有 $3\Phi$ 的通信量,分别由两次 all-gather 和一次 reduce-scatter 组成.
-
-为了减少这些通信开销,ZeRO++进行了三组通信优化,分别针对以上三个通信操作.
-
-其一是权重量化通信(Quantized weight communication for ZeRO, qwZ). 为了减少 all-gather 期间的参数通信量,ZeRO++在通信前将每个模型参数从 FP16(2 字节)缩减为 INT8(1 字节),然后在通信结束后,将权重再反量化回来.然而,如果只是简单地对权重进行直接,可能会降低模型训练的精度.为了减少对训练精度的影响,ZeRO++采用一种基于 block 的量化策略,对于模型参数,以 block 为单位进行量化.在当时的背景下,还不存在基于 block 的高性能量化算子.因此 DeepSpeed 团队从零实现了高度优化的量化 kernel,与当时的基础实现相比,其精度提高了三倍,性能提升了五倍.
+| 方法 | 英文名称 | 改变什么 |
+| --- | --- | --- |
+| qwZ | Quantized Weight Communication | 参数按块量化后传输，接收端反量化 |
+| hpZ | Hierarchical Weight Partitioning | 保留额外的分层参数分片，用显存换取更少跨节点参数通信 |
+| qgZ | Quantized Gradient Communication | 重排梯度、分层全互换（All-to-All）、反量化后归约 |
 
 下图展示了 Zero++中使用的基于 block 的量化和传统量化方式的区别以及随着 block 的数目增大,量化误差的变化趋势.
 
 ![Zero++pwZ](./images/02DeepSpeedqwZ.png)
 
-其二是分层权重划分(Hierarchical weight partition for ZeRO, hpZ).为了减少反向传播中的参数 all-gather 带来的通信损耗,ZeRO++使用 GPU 显存来换取通信开销.具体而言,在反向过程中,ZeRO++不再像 ZeRO 一样,把参数切分到所有参加训练的 GPU 设备上,而是在每个节点内保留一份完整的模型参数.尽管这种情况下,GPU 设备的显存占用更高,但是 all-gather 通信从低带宽-高延迟的跨节点通信的方式变成了高带宽-低延迟的节点内通信.
+*图 4：同一个 $[3,3]$ 张量采用整体量化或分块量化；元素数量不变，表示精度和缩放因子不同。*
 
-其三是梯度量化通信(Quantized gradient communication for ZeRO, qgZ). 在反向梯度的 reduce-scatter 过程中,降低通信量的挑战更大.因为这里涉及到不同 device 之间的梯度规约,直接使用量化来减少通信量是不可行的.即使采用类似权重量化的方式也会对于模型训练精度有较大的影响.为了缓解这个问题,需要在通信操作之前量化梯度,但是在规约操作之前,就将梯度反量化回去.为了高效实现这一设计目标,ZeRO++发明了一种全新的基于 all-to-all 的梯度量化范式,即 qgZ.
+例如 FP16 参数分片 $[8]$ 的数据载荷为 16 字节，转为 8 位整数（INT8）后为 8 字节，另外还需缩放元数据。接收后恢复为计算精度；量化并不改变矩阵逻辑形状，也不保证所有任务都没有精度损失。
 
-传统的 reduce-scatter 的通信操作主要基于树或者环结构,为了实现全精度的规约操作,传统做法需要执行多次量化和反量化操作.而 qgZ 则主要通过分层 all-to-all 的方式来克服这一挑战.qgZ 的实现过程主要有三个关键步骤:
-
-1.重排反向过程中产生的参数梯度
-
-2.进行节点内的梯度通信和规约操作
-
-3.进行节点间的梯度通信和规约操作
-
-首先,在进行梯度的 reduce-scatter 之前,将梯度切块,并且将这些分块重新排序来保证最终的梯度排列正确.然后,对这些重拍后的梯度分块进行量化,并且在每个节点之间执行 all-to-all 通信,然后将通信完的梯度进行反量化,再局部执行规约操作.接着,再将规约后的节点内部的梯度进行节点间的 all-to-all 通信,并且再次反量化接受到的梯度,进行最终的梯度规约.ZeRO++还进一步通过节点内通信和节点间通信的重叠,以及高性能的融合算子 kernel 来减少整体延迟.
+hpZ 不是“每张 GPU 都保留完整模型”。若次级分组有 $H$ 张卡，一个模型副本可由该组共同分片保存，每卡额外负担量级为 $N/H$ 个参数元素，具体以配置和缓存策略为准。
 
 qgZ 的具体过程可以参考下图.
 
@@ -291,18 +358,34 @@ qgZ 的具体过程可以参考下图.
 
 其中,灰色块代表反向过程中产生的参数梯度,绿色块代表最终每个 gpu 设备上规约后的梯度.橙色线圈出的部分代表 qgZ 过程中的高性能融合算子,在执行过程中不同的 grad 分块之间可以交叠执行.
 
-Zero++采用以上三种优化后,进一步减少了通信延迟,提高了训练效率.在小 batch size 的场景下,相对于 ZeRO-3, ZeRO++在不同的模型大小下可以实现 28%到 36%的训练吞吐提升.而在形如 100Gbps 的低配置的网络环境下,ZeRO++相较于 ZeRO-3 可以实现接近两倍的性能加速比.
+*图 5：按“重排 → 节点内交换与归约 → 节点间交换与归约”读取；图内机器和设备标签沿用原图，不作为本文四卡示例的全局编号。*
 
-## 总结与思考
+若四卡梯度逻辑向量均为 $[32]$，可分为四块 $[8]$。重排只改变顺序，量化只改变表示；最终每个拥有者仍应得到对应的归约梯度 $[8]$。节点内、节点间的中间布局取决于设备分组，不能把 All-to-All 本身当作求和操作。
 
-本节对 DeepSpeed 中的 ZeRO 系列优化进行了详细的分析和讨论.ZeRO 针对传统分布式并行的显存问题,进行了一系列变革的显存和通信优化,最终实现了高效的训练吞吐.尽管随着 GPU 硬件设备的更新换代,单卡显存容量不断提升,机内和机间的通信带宽也不断增大,形如 Megatron-LM 等 5D 并行训练逐渐取代 DeepSpeed ZeRO 系列的数据并行优化,成为现在大模型训练的主流.但是 ZeRO 系列的优化思想已经深入贯穿到目前的大模型训练中.例如 ZeRO-1,即 Megatron-LM 中的 Distributed_Optimizer 已经成为标准组件.而基于 block 的量化也已经被广泛应用于各种量化加速中.
+`zero_quantized_weights`、`zero_hpz_partition_size`、`zero_quantized_gradients` 分别控制相关功能。论文中的通信压缩倍数和吞吐提升有实验条件，不能推导为任意网络、模型和配置都同比加速。[7]
 
-## 参考与引用
+## 9. 怎样选择与验证
 
-* https://arxiv.org/pdf/1910.02054
-* https://docs.oneflow.org/master/cookies/zero.html
-* https://www.deepspeed.ai/tutorials/zero-offload/
-* https://www.microsoft.com/en-us/research/blog/zero-infinity-and-deepspeed-unlocking-unprecedented-model-scale-for-deep-learning-training/
-* https://www.microsoft.com/en-us/research/blog/deepspeed-zero-a-leap-in-speed-for-llm-and-chat-model-training-with-4x-less-communication/
-* https://www.microsoft.com/en-us/research/publication/zero-extremely-efficient-collective-communication-for-giant-model-training/
-* https://arxiv.org/pdf/2306.10209
+| 实际瓶颈 | 可以优先尝试 | 需要一起观察 |
+| --- | --- | --- |
+| 优化器状态大，完整参数仍放得下 | ZeRO-1 | 参数同步耗时 |
+| 梯度占用也很大 | ZeRO-2 | 归约桶和累积阶段的峰值 |
+| 完整参数常驻放不下 | ZeRO-3 | 临时参数汇集、最大模块、初始化 |
+| 激活占用为主 | 减小微批次、激活重计算 | 重计算时间和有效全局 batch |
+| 分片后容量仍不足 | CPU/NVMe 卸载 | 主机内存、传输带宽和实际吞吐 |
+| 跨节点通信成为瓶颈 | 调整桶、重叠策略，评估 ZeRO++ | 网络利用率及训练数值表现 |
+
+ZeRO 与 TP、流水线并行可以在合适实现中组合，不存在“多维并行已经普遍取代 ZeRO”的简单关系。组合前应核对引擎限制；例如前章所述 v0.17.5 `PipelineEngine` 不支持 ZeRO-2/3。
+
+验证时记录实际的 DP 度、状态精度、峰值显存、每步时间和通信时间，再与本章理论预算对照。先检查状态归属与尺寸是否正确，再判断优化是否划算。
+
+## 参考资料
+
+1. [ZeRO 原始论文](https://arxiv.org/abs/1910.02054)：模型状态、ZeRO-R 与理想通信量分析。
+2. [DeepSpeed ZeRO 官方教程](https://www.deepspeed.ai/tutorials/zero/)：三个阶段与训练配置。
+3. [v0.17.5 Stage 1/2 源码](https://github.com/deepspeedai/DeepSpeed/blob/v0.17.5/deepspeed/runtime/zero/stage_1_and_2.py)、[Stage 3 源码](https://github.com/deepspeedai/DeepSpeed/blob/v0.17.5/deepspeed/runtime/zero/stage3.py)：状态管理与通信路径。
+4. [v0.17.5 参数分片源码](https://github.com/deepspeedai/DeepSpeed/blob/v0.17.5/deepspeed/runtime/zero/partition_parameters.py)、[ZeRO API 文档](https://deepspeed.readthedocs.io/en/latest/zero3.html)：初始化、外部参数和卸载；在线文档随版本更新。
+5. [激活检查点文档](https://deepspeed.readthedocs.io/en/latest/activation-checkpointing.html)：重计算、分片和 CPU 检查点选项。
+6. [ZeRO-Infinity 论文](https://arxiv.org/abs/2104.07857)、[ZeRO-Offload 官方教程](https://www.deepspeed.ai/tutorials/zero-offload/)：异构存储与卸载。
+7. [ZeRO++ 论文](https://arxiv.org/abs/2306.10209)、[ZeRO++ 官方教程](https://www.deepspeed.ai/tutorials/zeropp/)：量化和分层通信。
+8. [v0.17.5 ZeRO 配置定义](https://github.com/deepspeedai/DeepSpeed/blob/v0.17.5/deepspeed/runtime/zero/config.py)：配置单位、适用阶段及默认值。
